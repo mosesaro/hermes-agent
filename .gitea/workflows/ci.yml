@@ -1,0 +1,67 @@
+# Hermes Agent Gitea CI
+# Gitea Actions validation workflow. Publishing, release, Windows installer, and
+# external registry jobs remain on GitHub until their credentials/runner paths
+# are explicitly migrated.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  python:
+    name: Python lint and focused tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Ruff check
+        run: ruff check .
+      - name: Focused unit tests
+        run: python -m pytest tests/tools tests/hermes_cli -q -o 'addopts='
+
+  web:
+    name: Web/TUI builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --workspaces=false
+      - run: npm ci --workspace web
+      - run: npm run build --workspace web
+      - run: npm ci --workspace ui-tui
+      - run: npm run build --workspace ui-tui
+
+  docs:
+    name: Docs site build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run build
